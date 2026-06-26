@@ -42,23 +42,24 @@ Public output:
 
 Goal: provide fishing recommendations using weather plus fishing-specific signals.
 
-Initial implemented signals:
+Implemented signals:
 
 - Wind comfort.
 - Rain risk.
 - Pressure trend over the next 24 hours.
-- Approximate moon phase.
+- Pressure-front timing when a meaningful drop is coming later or the next day.
+- Moon phase and illumination.
+- Solunar major/minor periods from USNO moonrise, moonset, and transit data.
 
 Next signals to add:
 
-- Solunar major/minor periods.
-- Better front timing logic based on pressure, wind shift, and forecast trend.
+- Better front timing logic based on both pressure and wind shift.
 - Species-specific guidance if the client wants it later.
 - Manual override notes for local conditions.
 
-Open question:
+Data source:
 
-- Whether to use a solunar API or a local calculation library. Local calculation avoids API keys, but an API may be more accurate and faster to validate.
+- USNO Astronomical Applications API for moon rise, set, transit, phase, and illumination. No API key is required.
 
 ## Admin Settings
 
@@ -82,4 +83,4 @@ Suggested first deployment:
 4. Tune thresholds with real Lake Kosh examples.
 5. Add public navigation only after the output looks useful.
 
-Phase 3 should stay behind a draft/private page until solunar/front scoring is validated.
+Phase 3 is public on `/fishing-conditions/`, with a homepage summary card linking to the detail page.

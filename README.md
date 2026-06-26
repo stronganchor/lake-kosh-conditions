@@ -5,9 +5,10 @@ WordPress plugin for Lake Kosh boating and fishing recommendations.
 ## What It Does
 
 - Fetches hourly forecast data for Lake Koshkonong from Open-Meteo.
+- Fetches sun/moon timing from the USNO Astronomical Applications API for solunar fishing windows.
 - Caches forecast data with WP transients and refreshes it with WP-Cron.
 - Scores daylight 3-4 hour boating windows based on wind, rain, temperature, and storm codes.
-- Provides an early fishing outlook based on wind, rain risk, pressure trend, and moon phase.
+- Provides fishing windows based on solunar major/minor periods, wind, rain risk, pressure-front timing, and moon phase.
 - Adds WordPress settings under `Settings > Lake Kosh Conditions`.
 - Provides shortcodes:
   - `[lake_kosh_boating_conditions]`
@@ -18,6 +19,7 @@ WordPress plugin for Lake Kosh boating and fishing recommendations.
 ## Display Notes
 
 - Full boating output shows one featured window, one recommended window per day, and one hourly detail table.
+- Full fishing output shows one featured window, ranked solunar cards, and one solunar table.
 - Summary mode is intended for homepage cards that link to fuller boating and fishing pages.
 
 ## Update Checker

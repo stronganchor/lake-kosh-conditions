@@ -14,6 +14,8 @@ class LKC_Plugin {
 
 	private $weather_client;
 
+	private $astronomy_client;
+
 	public static function instance(): self {
 		if ( null === self::$instance ) {
 			self::$instance = new self();
@@ -38,11 +40,13 @@ class LKC_Plugin {
 	}
 
 	public function init(): void {
-		$this->weather_client = new LKC_Weather_Client();
+		$this->weather_client   = new LKC_Weather_Client();
+		$this->astronomy_client = new LKC_Astronomy_Client();
 
 		add_action( 'admin_init', array( 'LKC_Settings', 'register' ) );
 		add_action( 'admin_menu', array( $this, 'admin_menu' ) );
 		add_action( self::CRON_HOOK, array( $this->weather_client, 'refresh' ) );
+		add_action( self::CRON_HOOK, array( $this->astronomy_client, 'refresh' ) );
 		add_shortcode( 'lake_kosh_boating_conditions', array( $this, 'boating_shortcode' ) );
 		add_shortcode( 'lake_kosh_fishing_conditions', array( $this, 'fishing_shortcode' ) );
 		add_action( 'wp_head', array( $this, 'styles' ) );
@@ -98,8 +102,9 @@ class LKC_Plugin {
 			return $this->error_message( $forecast );
 		}
 
-		$engine  = new LKC_Recommendations( LKC_Settings::get() );
-		$outlook = $engine->fishing_outlook( $forecast );
+		$astronomy = $this->astronomy_client->get_astronomy();
+		$engine    = new LKC_Recommendations( LKC_Settings::get() );
+		$outlook   = $engine->fishing_outlook( $forecast, is_wp_error( $astronomy ) ? array() : $astronomy );
 
 		if ( 'summary' === strtolower( (string) $atts['view'] ) ) {
 			return $this->render_fishing_summary( $outlook, (string) $atts['detail_url'] );
@@ -197,14 +202,21 @@ class LKC_Plugin {
 	}
 
 	private function render_fishing_summary( array $outlook, string $detail_url ): string {
+		$windows = is_array( $outlook['windows'] ?? null ) ? $outlook['windows'] : array();
+
 		ob_start();
 		?>
 		<section class="lkc-panel lkc-panel-summary lkc-fishing-summary">
 			<header class="lkc-panel-header">
 				<p class="lkc-eyebrow">Fishing</p>
-				<h3><?php echo esc_html( $outlook['rating'] ); ?> fishing conditions</h3>
+				<h3><?php echo empty( $windows ) ? esc_html( $outlook['rating'] . ' fishing conditions' ) : esc_html( $windows[0]['rating'] . ' fishing window' ); ?></h3>
 			</header>
-			<p>Wind averages <?php echo esc_html( (string) ( $outlook['average_wind'] ?? 0 ) ); ?> mph, rain risk reaches <?php echo esc_html( (string) ( $outlook['rain_max'] ?? 0 ) ); ?>%, and the moon is <?php echo esc_html( strtolower( (string) ( $outlook['moon_phase'] ?? '' ) ) ); ?>.</p>
+			<?php if ( empty( $windows ) ) : ?>
+				<p>Wind averages <?php echo esc_html( (string) ( $outlook['average_wind'] ?? 0 ) ); ?> mph, rain risk reaches <?php echo esc_html( (string) ( $outlook['rain_max'] ?? 0 ) ); ?>%, and the moon is <?php echo esc_html( strtolower( (string) ( $outlook['moon_phase'] ?? '' ) ) ); ?>.</p>
+			<?php else : ?>
+				<p class="lkc-window-time"><?php echo esc_html( $this->format_window_range( $windows[0] ) ); ?></p>
+				<p><?php echo esc_html( $this->fishing_summary_sentence( $windows[0] ) ); ?></p>
+			<?php endif; ?>
 			<?php echo $this->detail_link( $detail_url, 'View fishing forecast' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 		</section>
 		<?php
@@ -212,6 +224,8 @@ class LKC_Plugin {
 	}
 
 	private function render_fishing_detail( array $outlook ): string {
+		$windows = is_array( $outlook['windows'] ?? null ) ? $outlook['windows'] : array();
+
 		ob_start();
 		?>
 		<section class="lkc-panel lkc-fishing">
@@ -220,11 +234,61 @@ class LKC_Plugin {
 				<h2><?php echo esc_html( $outlook['rating'] ); ?> Fishing Conditions</h2>
 				<p><?php echo esc_html( $outlook['summary'] ); ?></p>
 			</header>
+			<?php if ( ! empty( $windows ) ) : ?>
+				<div class="lkc-featured-window">
+					<div>
+						<p class="lkc-eyebrow">Best next fishing window</p>
+						<h3><?php echo esc_html( $this->format_window_range( $windows[0] ) ); ?></h3>
+						<p><?php echo esc_html( $this->fishing_summary_sentence( $windows[0] ) ); ?></p>
+					</div>
+					<span class="<?php echo esc_attr( $this->rating_class( $windows[0]['rating'] ) ); ?>"><?php echo esc_html( $windows[0]['rating'] ); ?></span>
+				</div>
+				<div class="lkc-window-list">
+					<?php foreach ( $windows as $window ) : ?>
+						<article class="lkc-window-card">
+							<div class="lkc-card-title-row">
+								<h3><?php echo esc_html( $this->format_day( $window['start'] ) ); ?></h3>
+								<span class="<?php echo esc_attr( $this->rating_class( $window['rating'] ) ); ?>"><?php echo esc_html( $window['rating'] ); ?></span>
+							</div>
+							<p class="lkc-window-time"><?php echo esc_html( $this->format_compact_window_range( $window ) ); ?></p>
+							<p class="lkc-window-note"><?php echo esc_html( $window['period_type'] . ' solunar period: ' . $window['event_label'] ); ?></p>
+							<dl class="lkc-metric-grid">
+								<div><dt>Wind</dt><dd><?php echo esc_html( (string) $window['wind_avg'] ); ?> mph</dd></div>
+								<div><dt>Rain</dt><dd><?php echo esc_html( (string) $window['rain_max'] ); ?>%</dd></div>
+								<div><dt>Moon</dt><dd><?php echo esc_html( (string) ( $window['moon_illumination'] ?: $window['moon_phase'] ) ); ?></dd></div>
+							</dl>
+							<?php if ( ! empty( $window['notes'] ) ) : ?>
+								<p class="lkc-window-note"><?php echo esc_html( implode( ' ', $window['notes'] ) ); ?></p>
+							<?php endif; ?>
+						</article>
+					<?php endforeach; ?>
+				</div>
+				<div class="lkc-hour-detail">
+					<h3>Solunar Table</h3>
+					<div class="lkc-table-scroll">
+						<table class="lkc-hour-table">
+							<thead><tr><th>Window</th><th>Solunar</th><th>Rating</th><th>Wind</th><th>Rain</th><th>Moon</th></tr></thead>
+							<tbody>
+								<?php foreach ( $windows as $window ) : ?>
+									<tr>
+										<td><?php echo esc_html( $this->format_day( $window['start'] ) . ' ' . $this->format_compact_window_range( $window ) ); ?></td>
+										<td><?php echo esc_html( $window['period_type'] . ': ' . $window['event_label'] ); ?></td>
+										<td><?php echo esc_html( $window['rating'] ); ?></td>
+										<td><?php echo esc_html( (string) $window['wind_avg'] ); ?> mph</td>
+										<td><?php echo esc_html( (string) $window['rain_max'] ); ?>%</td>
+										<td><?php echo esc_html( trim( (string) $window['moon_phase'] . ' ' . (string) $window['moon_illumination'] ) ); ?></td>
+									</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			<?php endif; ?>
 			<ul class="lkc-stat-list">
 				<li><strong>Average wind:</strong> <?php echo esc_html( (string) ( $outlook['average_wind'] ?? 0 ) ); ?> mph</li>
 				<li><strong>Rain risk:</strong> up to <?php echo esc_html( (string) ( $outlook['rain_max'] ?? 0 ) ); ?>%</li>
 				<li><strong>Pressure drop:</strong> <?php echo esc_html( (string) ( $outlook['pressure_drop'] ?? 0 ) ); ?> hPa</li>
-				<li><strong>Moon:</strong> <?php echo esc_html( (string) ( $outlook['moon_phase'] ?? '' ) ); ?></li>
+				<li><strong>Moon:</strong> <?php echo esc_html( trim( (string) ( $outlook['moon_phase'] ?? '' ) . ' ' . (string) ( $outlook['moon_illumination'] ?? '' ) ) ); ?></li>
 			</ul>
 			<?php if ( ! empty( $outlook['notes'] ) ) : ?>
 				<ul class="lkc-note-list">
@@ -495,13 +559,26 @@ class LKC_Plugin {
 		);
 	}
 
+	private function fishing_summary_sentence( array $window ): string {
+		return sprintf(
+			'%s solunar period, %s wind, rain chance up to %s%%.',
+			(string) ( $window['period_type'] ?? 'Solunar' ),
+			(string) ( $window['wind_avg'] ?? 0 ) . ' mph',
+			(string) ( $window['rain_max'] ?? 0 )
+		);
+	}
+
 	private function rating_class( string $rating ): string {
 		return 'lkc-rating-pill ' . sanitize_html_class( 'lkc-rating-' . strtolower( $rating ) );
 	}
 
 	private function window_end_timestamp( array $window ): int {
 		$end = strtotime( (string) ( $window['end'] ?? '' ) );
-		return $end ? $end + HOUR_IN_SECONDS : 0;
+		if ( ! $end ) {
+			return 0;
+		}
+
+		return ! empty( $window['end_is_exact'] ) ? $end : $end + HOUR_IN_SECONDS;
 	}
 
 	private function error_message( WP_Error $error ): string {

@@ -3,14 +3,14 @@ Contributors: stronganchor
 Tags: weather, boating, fishing, lake
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 0.1.2
+Stable tag: 0.2.0
 License: GPLv2 or later
 
 Weather-backed boating and fishing condition recommendations for Lake Koshkonong.
 
 == Description ==
 
-Lake Kosh Conditions fetches hourly forecast data, caches it in WordPress, and renders boating and fishing recommendations with shortcodes.
+Lake Kosh Conditions fetches hourly forecast data, caches it in WordPress, and renders boating and fishing recommendations with shortcodes. Fishing recommendations use weather, pressure trend, moon phase, and USNO sun/moon timing for solunar windows.
 
 Shortcodes:
 
@@ -20,6 +20,9 @@ Shortcodes:
 * `[lake_kosh_fishing_conditions view="summary" detail_url="/fishing-conditions/"]`
 
 == Changelog ==
+
+= 0.2.0 =
+* Added cached USNO astronomy data and solunar fishing-window scoring with front-timing notes.
 
 = 0.1.2 =
 * Limited boating recommendations to one best window per day so adjacent windows do not read as overlapping.

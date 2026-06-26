@@ -53,7 +53,7 @@ class LKC_Recommendations {
 		return $this->select_boating_windows( $candidates, (int) $this->settings['max_boating_windows'] );
 	}
 
-	public function fishing_outlook( array $forecast ): array {
+	public function fishing_outlook( array $forecast, array $astronomy = array() ): array {
 		$hours = $this->build_hour_rows( $forecast );
 		$next  = array_slice( $hours, 0, 24 );
 
@@ -69,7 +69,10 @@ class LKC_Recommendations {
 		$avg_wind      = $this->average( wp_list_pluck( $next, 'wind_speed' ) );
 		$rain_max      = max( wp_list_pluck( $next, 'precip_probability' ) );
 		$pressure_drop = $this->pressure_drop( $next );
-		$moon          = $this->moon_phase_label( current_time( 'timestamp' ) );
+		$moon          = $this->current_moon_phase( $astronomy );
+		$illumination  = $this->current_moon_illumination( $astronomy );
+		$front         = $this->front_signal( $hours );
+		$windows       = $this->fishing_windows( $hours, $astronomy, $front );
 		$score         = 60;
 		$notes         = array();
 
@@ -91,7 +94,20 @@ class LKC_Recommendations {
 			$notes[] = 'Pressure is dropping, which can be useful ahead of a front.';
 		}
 
-		$notes[] = 'Moon phase: ' . $moon . '.';
+		if ( ! empty( $front ) ) {
+			$score  += 6;
+			$notes[] = sprintf(
+				'A pressure drop of about %s hPa is showing %s.',
+				$front['drop'],
+				$front['label']
+			);
+		}
+
+		if ( ! empty( $windows ) ) {
+			$score = max( $score, (int) $windows[0]['score'] - 5 );
+		}
+
+		$notes[] = 'Moon phase: ' . $moon . ( $illumination ? ' (' . $illumination . ' illuminated)' : '' ) . '.';
 		$score   = max( 0, min( 100, $score ) );
 
 		return array(
@@ -101,8 +117,178 @@ class LKC_Recommendations {
 			'rain_max'      => $rain_max,
 			'pressure_drop' => round( $pressure_drop, 1 ),
 			'moon_phase'    => $moon,
-			'summary'       => 'Early fishing outlook based on wind, rain chances, pressure trend, and moon phase.',
+			'moon_illumination' => $illumination,
+			'front'         => $front,
+			'windows'       => $windows,
+			'summary'       => 'Fishing outlook based on weather, solunar periods, pressure trend, and moon phase.',
 			'notes'         => $notes,
+		);
+	}
+
+	private function fishing_windows( array $hours, array $astronomy, array $front = array() ): array {
+		$periods  = $this->solunar_periods( $astronomy );
+		$windows  = array();
+		$per_day  = array();
+
+		foreach ( $periods as $period ) {
+			$window = $this->score_fishing_period( $period, $hours, $front );
+			if ( empty( $window['hours'] ) || $window['score'] < 50 ) {
+				continue;
+			}
+
+			$windows[] = $window;
+		}
+
+		usort(
+			$windows,
+			static function ( array $a, array $b ): int {
+				if ( $a['score'] === $b['score'] ) {
+					return strcmp( $a['start'], $b['start'] );
+				}
+
+				return $b['score'] <=> $a['score'];
+			}
+		);
+
+		$selected = array();
+		foreach ( $windows as $window ) {
+			$day = substr( (string) $window['start'], 0, 10 );
+			if ( ( $per_day[ $day ] ?? 0 ) >= 2 ) {
+				continue;
+			}
+
+			if ( $this->overlaps_selected_window( $window, $selected ) ) {
+				continue;
+			}
+
+			$selected[]      = $window;
+			$per_day[ $day ] = ( $per_day[ $day ] ?? 0 ) + 1;
+
+			if ( count( $selected ) >= 6 ) {
+				break;
+			}
+		}
+
+		usort(
+			$selected,
+			static function ( array $a, array $b ): int {
+				return strcmp( $a['start'], $b['start'] );
+			}
+		);
+
+		return $selected;
+	}
+
+	private function solunar_periods( array $astronomy ): array {
+		$periods = array();
+		$days    = is_array( $astronomy['days'] ?? null ) ? $astronomy['days'] : array();
+
+		foreach ( $days as $day ) {
+			if ( ! is_array( $day ) ) {
+				continue;
+			}
+
+			foreach ( (array) ( $day['moondata'] ?? array() ) as $event ) {
+				if ( ! is_array( $event ) || empty( $event['phen'] ) || empty( $event['datetime'] ) ) {
+					continue;
+				}
+
+				$phen      = (string) $event['phen'];
+				$timestamp = strtotime( (string) $event['datetime'] );
+				if ( ! $timestamp ) {
+					continue;
+				}
+
+				if ( false !== stripos( $phen, 'Transit' ) ) {
+					$type      = 'Major';
+					$label     = false !== stripos( $phen, 'Lower' ) ? 'Moon underfoot' : 'Moon overhead';
+					$half_span = HOUR_IN_SECONDS;
+				} elseif ( 'Rise' === $phen || 'Set' === $phen ) {
+					$type      = 'Minor';
+					$label     = 'Rise' === $phen ? 'Moonrise' : 'Moonset';
+					$half_span = 45 * MINUTE_IN_SECONDS;
+				} else {
+					continue;
+				}
+
+				$periods[] = array(
+					'start'             => date( 'Y-m-d\TH:i:s', $timestamp - $half_span ),
+					'end'               => date( 'Y-m-d\TH:i:s', $timestamp + $half_span ),
+					'event_time'        => (string) $event['datetime'],
+					'period_type'       => $type,
+					'event_label'       => $label,
+					'moon_phase'        => (string) ( $day['moon_phase'] ?? '' ),
+					'moon_illumination' => (string) ( $day['moon_illumination'] ?? '' ),
+					'end_is_exact'      => true,
+				);
+			}
+		}
+
+		usort(
+			$periods,
+			static function ( array $a, array $b ): int {
+				return strcmp( $a['start'], $b['start'] );
+			}
+		);
+
+		return $periods;
+	}
+
+	private function score_fishing_period( array $period, array $hours, array $front ): array {
+		$period_hours = $this->hours_between( $hours, (string) $period['start'], (string) $period['end'] );
+		$wind_avg     = $this->average( wp_list_pluck( $period_hours, 'wind_speed' ) );
+		$rain_max     = empty( $period_hours ) ? 0 : max( wp_list_pluck( $period_hours, 'precip_probability' ) );
+		$score        = 'Major' === $period['period_type'] ? 66 : 58;
+		$notes        = array();
+
+		$score += $this->moon_activity_bonus( (string) $period['moon_phase'], (string) $period['moon_illumination'] );
+
+		if ( $wind_avg <= 8 ) {
+			$score  += 8;
+			$notes[] = 'Light wind should help boat control.';
+		} elseif ( $wind_avg <= 12 ) {
+			$score += 4;
+		} elseif ( $wind_avg > 18 ) {
+			$score  -= 18;
+			$notes[] = 'Wind may make fishing less comfortable.';
+		} elseif ( $wind_avg > 14 ) {
+			$score  -= 10;
+			$notes[] = 'Wind is higher than ideal.';
+		}
+
+		if ( $rain_max > (int) $this->settings['rain_probability_max'] ) {
+			$score  -= 12;
+			$notes[] = 'Rain chances are elevated.';
+		}
+
+		if ( ! empty( $period_hours ) && $this->has_storm_or_rain_code( $period_hours ) ) {
+			$score  -= 20;
+			$notes[] = 'Forecast codes suggest rain or storms nearby.';
+		}
+
+		$front_note = $this->front_note_for_window( $period, $front );
+		if ( '' !== $front_note ) {
+			$score  += 10;
+			$notes[] = $front_note;
+		}
+
+		$score = (int) max( 0, min( 100, round( $score ) ) );
+
+		return array(
+			'start'             => $period['start'],
+			'end'               => $period['end'],
+			'end_is_exact'      => true,
+			'event_time'        => $period['event_time'],
+			'period_type'       => $period['period_type'],
+			'event_label'       => $period['event_label'],
+			'moon_phase'        => $period['moon_phase'],
+			'moon_illumination' => $period['moon_illumination'],
+			'rating'            => $this->rating_from_score( $score ),
+			'score'             => $score,
+			'wind_avg'          => round( $wind_avg, 1 ),
+			'rain_max'          => $rain_max,
+			'hours'             => $period_hours,
+			'notes'             => $notes,
 		);
 	}
 
@@ -112,8 +298,13 @@ class LKC_Recommendations {
 		$sunrise = $daily['sunrise'] ?? array();
 		$sunset  = $daily['sunset'] ?? array();
 		$rows    = array();
+		$now     = $this->current_forecast_hour();
 
 		foreach ( (array) ( $hourly['time'] ?? array() ) as $index => $time ) {
+			if ( (string) $time < $now ) {
+				continue;
+			}
+
 			$date = substr( (string) $time, 0, 10 );
 			$day  = array_search( $date, array_map( array( $this, 'date_part' ), $sunrise ), true );
 
@@ -134,6 +325,13 @@ class LKC_Recommendations {
 		}
 
 		return $rows;
+	}
+
+	private function current_forecast_hour(): string {
+		$timezone = new DateTimeZone( (string) ( $this->settings['timezone'] ?? 'America/Chicago' ) );
+		$now      = new DateTimeImmutable( 'now', $timezone );
+
+		return $now->format( 'Y-m-d\TH:00' );
 	}
 
 	private function is_consecutive_daylight_window( array $window ): bool {
@@ -244,11 +442,11 @@ class LKC_Recommendations {
 
 	private function overlaps_selected_window( array $candidate, array $selected ): bool {
 		$candidate_start = strtotime( (string) $candidate['start'] );
-		$candidate_end   = strtotime( (string) $candidate['end'] ) + HOUR_IN_SECONDS;
+		$candidate_end   = $this->period_end_timestamp( $candidate );
 
 		foreach ( $selected as $window ) {
 			$window_start = strtotime( (string) $window['start'] );
-			$window_end   = strtotime( (string) $window['end'] ) + HOUR_IN_SECONDS;
+			$window_end   = $this->period_end_timestamp( $window );
 
 			if ( $candidate_start < $window_end && $window_start < $candidate_end ) {
 				return true;
@@ -256,6 +454,164 @@ class LKC_Recommendations {
 		}
 
 		return false;
+	}
+
+	private function period_end_timestamp( array $window ): int {
+		$end = strtotime( (string) ( $window['end'] ?? '' ) );
+		if ( ! $end ) {
+			return 0;
+		}
+
+		return ! empty( $window['end_is_exact'] ) ? $end : $end + HOUR_IN_SECONDS;
+	}
+
+	private function hours_between( array $hours, string $start, string $end ): array {
+		$start_ts = strtotime( $start );
+		$end_ts   = strtotime( $end );
+		$selected = array();
+
+		if ( ! $start_ts || ! $end_ts ) {
+			return $selected;
+		}
+
+		foreach ( $hours as $hour ) {
+			$hour_ts = strtotime( (string) $hour['time'] );
+			if ( $hour_ts >= $start_ts && $hour_ts <= $end_ts ) {
+				$selected[] = $hour;
+			}
+		}
+
+		if ( ! empty( $selected ) ) {
+			return $selected;
+		}
+
+		$event_midpoint = $start_ts + (int) round( ( $end_ts - $start_ts ) / 2 );
+		$closest        = null;
+		$closest_delta  = PHP_INT_MAX;
+
+		foreach ( $hours as $hour ) {
+			$hour_ts = strtotime( (string) $hour['time'] );
+			$delta   = abs( $hour_ts - $event_midpoint );
+			if ( $delta < $closest_delta ) {
+				$closest       = $hour;
+				$closest_delta = $delta;
+			}
+		}
+
+		return $closest ? array( $closest ) : array();
+	}
+
+	private function front_signal( array $hours ): array {
+		$threshold = (float) $this->settings['front_pressure_drop'];
+		$best      = array();
+		$count     = count( $hours );
+
+		for ( $index = 0; $index < $count; $index++ ) {
+			if ( empty( $hours[ $index ]['pressure'] ) ) {
+				continue;
+			}
+
+			for ( $ahead = 6; $ahead <= 30; $ahead += 6 ) {
+				if ( ! isset( $hours[ $index + $ahead ] ) || empty( $hours[ $index + $ahead ]['pressure'] ) ) {
+					continue;
+				}
+
+				$drop = (float) $hours[ $index ]['pressure'] - (float) $hours[ $index + $ahead ]['pressure'];
+				if ( $drop < $threshold ) {
+					continue;
+				}
+
+				if ( empty( $best ) || $drop > (float) $best['drop'] ) {
+					$time = (string) $hours[ $index + $ahead ]['time'];
+					$best = array(
+						'time'        => $time,
+						'drop'        => round( $drop, 1 ),
+						'hours_ahead' => $ahead,
+						'label'       => $this->front_label( $time ),
+					);
+				}
+			}
+		}
+
+		return $best;
+	}
+
+	private function front_note_for_window( array $window, array $front ): string {
+		if ( empty( $front['time'] ) ) {
+			return '';
+		}
+
+		$window_end = strtotime( (string) $window['end'] );
+		$front_time = strtotime( (string) $front['time'] );
+
+		if ( ! $window_end || ! $front_time || $front_time <= $window_end ) {
+			return '';
+		}
+
+		$hours_until_front = ( $front_time - $window_end ) / HOUR_IN_SECONDS;
+		if ( $hours_until_front > 36 ) {
+			return '';
+		}
+
+		return sprintf( 'A pressure drop is showing %s.', $front['label'] );
+	}
+
+	private function front_label( string $time ): string {
+		$timestamp = strtotime( $time );
+		if ( ! $timestamp ) {
+			return 'later in the forecast';
+		}
+
+		$today    = date_i18n( 'Y-m-d', current_time( 'timestamp' ) );
+		$tomorrow = date_i18n( 'Y-m-d', current_time( 'timestamp' ) + DAY_IN_SECONDS );
+		$date     = date_i18n( 'Y-m-d', $timestamp );
+
+		if ( $date === $today ) {
+			return 'later today';
+		}
+
+		if ( $date === $tomorrow ) {
+			return 'tomorrow';
+		}
+
+		return 'on ' . date_i18n( 'D, M j', $timestamp );
+	}
+
+	private function current_moon_phase( array $astronomy ): string {
+		$days = is_array( $astronomy['days'] ?? null ) ? $astronomy['days'] : array();
+		foreach ( $days as $day ) {
+			if ( is_array( $day ) && ! empty( $day['moon_phase'] ) ) {
+				return (string) $day['moon_phase'];
+			}
+		}
+
+		return $this->moon_phase_label( current_time( 'timestamp' ) );
+	}
+
+	private function current_moon_illumination( array $astronomy ): string {
+		$days = is_array( $astronomy['days'] ?? null ) ? $astronomy['days'] : array();
+		foreach ( $days as $day ) {
+			if ( is_array( $day ) && ! empty( $day['moon_illumination'] ) ) {
+				return (string) $day['moon_illumination'];
+			}
+		}
+
+		return '';
+	}
+
+	private function moon_activity_bonus( string $phase, string $illumination ): int {
+		$phase = strtolower( $phase );
+		$value = (int) preg_replace( '/[^0-9]/', '', $illumination );
+
+		if ( false !== strpos( $phase, 'full' ) || false !== strpos( $phase, 'new' ) || $value >= 85 || ( $value > 0 && $value <= 15 ) ) {
+			return 8;
+		}
+
+		if ( false !== strpos( $phase, 'quarter' ) ) {
+			return 4;
+		}
+
+		return 0;
 	}
 
 	private function rating_from_score( int $score ): string {
