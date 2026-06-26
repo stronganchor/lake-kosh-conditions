@@ -19,7 +19,9 @@ WordPress plugin for Lake Kosh boating and fishing recommendations.
 ## Display Notes
 
 - Full boating output shows one featured window, one recommended window per day, and one hourly detail table.
+- Full boating output includes a safety/planning note reminding visitors to check current weather before going out.
 - Full fishing output shows one featured window, ranked solunar cards, and one solunar table.
+- Fishing solunar windows are rounded to the nearest half hour for easier scanning.
 - Summary mode is intended for homepage cards that link to fuller boating and fishing pages.
 
 ## Update Checker

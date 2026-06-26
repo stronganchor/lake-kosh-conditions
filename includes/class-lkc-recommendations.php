@@ -211,9 +211,12 @@ class LKC_Recommendations {
 					continue;
 				}
 
+				$start = $this->round_to_half_hour( $timestamp - $half_span );
+				$end   = $this->round_to_half_hour( $timestamp + $half_span );
+
 				$periods[] = array(
-					'start'             => date( 'Y-m-d\TH:i:s', $timestamp - $half_span ),
-					'end'               => date( 'Y-m-d\TH:i:s', $timestamp + $half_span ),
+					'start'             => date( 'Y-m-d\TH:i:s', $start ),
+					'end'               => date( 'Y-m-d\TH:i:s', $end ),
 					'event_time'        => (string) $event['datetime'],
 					'period_type'       => $type,
 					'event_label'       => $label,
@@ -232,6 +235,12 @@ class LKC_Recommendations {
 		);
 
 		return $periods;
+	}
+
+	private function round_to_half_hour( int $timestamp ): int {
+		$interval = 30 * MINUTE_IN_SECONDS;
+
+		return (int) ( round( $timestamp / $interval ) * $interval );
 	}
 
 	private function score_fishing_period( array $period, array $hours, array $front ): array {

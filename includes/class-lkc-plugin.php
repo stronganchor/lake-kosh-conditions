@@ -142,6 +142,9 @@ class LKC_Plugin {
 				<h2>Best Boating Conditions</h2>
 				<p>Daylight windows with lighter wind, comfortable temperatures, and lower rain risk. Each suggested window is shown once so the forecast is easier to scan.</p>
 			</header>
+			<div class="lkc-safety-note">
+				<strong>Use at your own risk.</strong> These boating windows are planning estimates only, not safety guidance. Check the latest official forecast, radar, and lake conditions before heading out, and stay alert for fast-changing weather.
+			</div>
 			<?php if ( empty( $windows ) ) : ?>
 				<p>No strong boating windows are showing in the current forecast. Check again after the next forecast refresh.</p>
 			<?php else : ?>
@@ -476,6 +479,17 @@ class LKC_Plugin {
 			}
 			.lkc-note-list {
 				margin-top: 1rem;
+			}
+			.lkc-safety-note {
+				margin: 1rem 0;
+				padding: .9rem 1rem;
+				border-left: 4px solid #b15f00;
+				background: #fff7e8;
+				color: #4d3413;
+				line-height: 1.45;
+			}
+			.lkc-safety-note strong {
+				color: inherit;
 			}
 			.lkc-actions {
 				margin: auto 0 0;
