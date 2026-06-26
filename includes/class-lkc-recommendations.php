@@ -50,7 +50,7 @@ class LKC_Recommendations {
 			}
 		);
 
-		return array_slice( $candidates, 0, (int) $this->settings['max_boating_windows'] );
+		return $this->select_boating_windows( $candidates, (int) $this->settings['max_boating_windows'] );
 	}
 
 	public function fishing_outlook( array $forecast ): array {
@@ -208,6 +208,54 @@ class LKC_Recommendations {
 			'hours'      => $window,
 			'notes'      => $notes,
 		);
+	}
+
+	private function select_boating_windows( array $candidates, int $max_windows ): array {
+		$selected = array();
+		$per_day  = array();
+
+		foreach ( $candidates as $candidate ) {
+			$day = substr( (string) $candidate['start'], 0, 10 );
+			if ( ( $per_day[ $day ] ?? 0 ) >= 2 ) {
+				continue;
+			}
+
+			if ( $this->overlaps_selected_window( $candidate, $selected ) ) {
+				continue;
+			}
+
+			$selected[]       = $candidate;
+			$per_day[ $day ] = ( $per_day[ $day ] ?? 0 ) + 1;
+
+			if ( count( $selected ) >= $max_windows ) {
+				break;
+			}
+		}
+
+		usort(
+			$selected,
+			static function ( array $a, array $b ): int {
+				return strcmp( $a['start'], $b['start'] );
+			}
+		);
+
+		return $selected;
+	}
+
+	private function overlaps_selected_window( array $candidate, array $selected ): bool {
+		$candidate_start = strtotime( (string) $candidate['start'] );
+		$candidate_end   = strtotime( (string) $candidate['end'] ) + HOUR_IN_SECONDS;
+
+		foreach ( $selected as $window ) {
+			$window_start = strtotime( (string) $window['start'] );
+			$window_end   = strtotime( (string) $window['end'] ) + HOUR_IN_SECONDS;
+
+			if ( $candidate_start < $window_end && $window_start < $candidate_end ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private function rating_from_score( int $score ): string {

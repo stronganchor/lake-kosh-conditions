@@ -58,7 +58,16 @@ class LKC_Plugin {
 		);
 	}
 
-	public function boating_shortcode(): string {
+	public function boating_shortcode( $atts = array() ): string {
+		$atts = shortcode_atts(
+			array(
+				'view'       => 'full',
+				'detail_url' => '',
+			),
+			$atts,
+			'lake_kosh_boating_conditions'
+		);
+
 		$forecast = $this->weather_client->get_forecast();
 		if ( is_wp_error( $forecast ) ) {
 			return $this->error_message( $forecast );
@@ -67,53 +76,23 @@ class LKC_Plugin {
 		$engine  = new LKC_Recommendations( LKC_Settings::get() );
 		$windows = $engine->boating_windows( $forecast );
 
-		ob_start();
-		?>
-		<section class="lkc-panel lkc-boating">
-			<header class="lkc-panel-header">
-				<p class="lkc-eyebrow">Pontoon Ride Windows</p>
-				<h2>Best Boating Conditions</h2>
-				<p>Daylight windows with lighter wind, comfortable temperatures, and lower rain risk.</p>
-			</header>
-			<?php if ( empty( $windows ) ) : ?>
-				<p>No strong boating windows are showing in the current forecast. Check again after the next forecast refresh.</p>
-			<?php else : ?>
-				<div class="lkc-window-list">
-					<?php foreach ( $windows as $window ) : ?>
-						<article class="lkc-window-card">
-							<h3><?php echo esc_html( $window['rating'] ); ?></h3>
-							<p class="lkc-window-time"><?php echo esc_html( $this->format_time( $window['start'] ) . ' - ' . $this->format_time( $window['end'] ) ); ?></p>
-							<p>Average temp <?php echo esc_html( (string) $window['temp_avg'] ); ?>&deg;F, max wind <?php echo esc_html( (string) $window['wind_max'] ); ?> mph, rain chance up to <?php echo esc_html( (string) $window['rain_max'] ); ?>%.</p>
-							<?php if ( ! empty( $window['notes'] ) ) : ?>
-								<ul>
-									<?php foreach ( $window['notes'] as $note ) : ?>
-										<li><?php echo esc_html( $note ); ?></li>
-									<?php endforeach; ?>
-								</ul>
-							<?php endif; ?>
-							<table class="lkc-hour-table">
-								<thead><tr><th>Hour</th><th>Temp</th><th>Wind</th><th>Rain</th></tr></thead>
-								<tbody>
-									<?php foreach ( $window['hours'] as $hour ) : ?>
-										<tr>
-											<td><?php echo esc_html( $this->format_hour( $hour['time'] ) ); ?></td>
-											<td><?php echo esc_html( (string) round( $hour['temperature'] ) ); ?>&deg;</td>
-											<td><?php echo esc_html( $this->wind_label( $hour ) ); ?></td>
-											<td><?php echo esc_html( (string) $hour['precip_probability'] ); ?>%</td>
-										</tr>
-									<?php endforeach; ?>
-								</tbody>
-							</table>
-						</article>
-					<?php endforeach; ?>
-				</div>
-			<?php endif; ?>
-		</section>
-		<?php
-		return ob_get_clean();
+		if ( 'summary' === strtolower( (string) $atts['view'] ) ) {
+			return $this->render_boating_summary( $windows, (string) $atts['detail_url'] );
+		}
+
+		return $this->render_boating_detail( $windows );
 	}
 
-	public function fishing_shortcode(): string {
+	public function fishing_shortcode( $atts = array() ): string {
+		$atts = shortcode_atts(
+			array(
+				'view'       => 'full',
+				'detail_url' => '',
+			),
+			$atts,
+			'lake_kosh_fishing_conditions'
+		);
+
 		$forecast = $this->weather_client->get_forecast();
 		if ( is_wp_error( $forecast ) ) {
 			return $this->error_message( $forecast );
@@ -122,6 +101,117 @@ class LKC_Plugin {
 		$engine  = new LKC_Recommendations( LKC_Settings::get() );
 		$outlook = $engine->fishing_outlook( $forecast );
 
+		if ( 'summary' === strtolower( (string) $atts['view'] ) ) {
+			return $this->render_fishing_summary( $outlook, (string) $atts['detail_url'] );
+		}
+
+		return $this->render_fishing_detail( $outlook );
+	}
+
+	private function render_boating_summary( array $windows, string $detail_url ): string {
+		ob_start();
+		?>
+		<section class="lkc-panel lkc-panel-summary lkc-boating-summary">
+			<header class="lkc-panel-header">
+				<p class="lkc-eyebrow">Pontoon Rides</p>
+				<h3><?php echo empty( $windows ) ? esc_html__( 'No strong window yet', 'lake-kosh-conditions' ) : esc_html( $windows[0]['rating'] . ' boating window' ); ?></h3>
+			</header>
+			<?php if ( empty( $windows ) ) : ?>
+				<p>Wind, rain, or temperature are not lining up for a strong pontoon window in the current forecast.</p>
+			<?php else : ?>
+				<p class="lkc-window-time"><?php echo esc_html( $this->format_window_range( $windows[0] ) ); ?></p>
+				<p><?php echo esc_html( $this->window_summary_sentence( $windows[0] ) ); ?></p>
+			<?php endif; ?>
+			<?php echo $this->detail_link( $detail_url, 'View boating forecast' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+		</section>
+		<?php
+		return ob_get_clean();
+	}
+
+	private function render_boating_detail( array $windows ): string {
+		ob_start();
+		?>
+		<section class="lkc-panel lkc-boating">
+			<header class="lkc-panel-header">
+				<p class="lkc-eyebrow">Pontoon Ride Windows</p>
+				<h2>Best Boating Conditions</h2>
+				<p>Daylight windows with lighter wind, comfortable temperatures, and lower rain risk. Each suggested window is shown once so the forecast is easier to scan.</p>
+			</header>
+			<?php if ( empty( $windows ) ) : ?>
+				<p>No strong boating windows are showing in the current forecast. Check again after the next forecast refresh.</p>
+			<?php else : ?>
+				<div class="lkc-featured-window">
+					<div>
+						<p class="lkc-eyebrow">Best next window</p>
+						<h3><?php echo esc_html( $this->format_window_range( $windows[0] ) ); ?></h3>
+						<p><?php echo esc_html( $this->window_summary_sentence( $windows[0] ) ); ?></p>
+					</div>
+					<span class="<?php echo esc_attr( $this->rating_class( $windows[0]['rating'] ) ); ?>"><?php echo esc_html( $windows[0]['rating'] ); ?></span>
+				</div>
+
+				<div class="lkc-window-list">
+					<?php foreach ( $windows as $window ) : ?>
+						<article class="lkc-window-card">
+							<div class="lkc-card-title-row">
+								<h3><?php echo esc_html( $this->format_day( $window['start'] ) ); ?></h3>
+								<span class="<?php echo esc_attr( $this->rating_class( $window['rating'] ) ); ?>"><?php echo esc_html( $window['rating'] ); ?></span>
+							</div>
+							<p class="lkc-window-time"><?php echo esc_html( $this->format_compact_window_range( $window ) ); ?></p>
+							<dl class="lkc-metric-grid">
+								<div><dt>Temp</dt><dd><?php echo esc_html( (string) $window['temp_avg'] ); ?>&deg;F</dd></div>
+								<div><dt>Wind</dt><dd><?php echo esc_html( (string) $window['wind_max'] ); ?> mph</dd></div>
+								<div><dt>Rain</dt><dd><?php echo esc_html( (string) $window['rain_max'] ); ?>%</dd></div>
+							</dl>
+							<?php if ( ! empty( $window['notes'] ) ) : ?>
+								<p class="lkc-window-note"><?php echo esc_html( implode( ' ', $window['notes'] ) ); ?></p>
+							<?php endif; ?>
+						</article>
+					<?php endforeach; ?>
+				</div>
+
+				<div class="lkc-hour-detail">
+					<h3>Hourly Detail</h3>
+					<div class="lkc-table-scroll">
+						<table class="lkc-hour-table">
+							<thead><tr><th>Window</th><th>Hour</th><th>Temp</th><th>Wind</th><th>Rain</th></tr></thead>
+							<tbody>
+								<?php foreach ( $windows as $window ) : ?>
+									<?php foreach ( $window['hours'] as $hour ) : ?>
+										<tr>
+											<td><?php echo esc_html( $this->format_day( $window['start'] ) . ' ' . $this->format_compact_window_range( $window ) ); ?></td>
+											<td><?php echo esc_html( $this->format_hour( $hour['time'] ) ); ?></td>
+											<td><?php echo esc_html( (string) round( $hour['temperature'] ) ); ?>&deg;</td>
+											<td><?php echo esc_html( $this->wind_label( $hour ) ); ?></td>
+											<td><?php echo esc_html( (string) $hour['precip_probability'] ); ?>%</td>
+										</tr>
+									<?php endforeach; ?>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			<?php endif; ?>
+		</section>
+		<?php
+		return ob_get_clean();
+	}
+
+	private function render_fishing_summary( array $outlook, string $detail_url ): string {
+		ob_start();
+		?>
+		<section class="lkc-panel lkc-panel-summary lkc-fishing-summary">
+			<header class="lkc-panel-header">
+				<p class="lkc-eyebrow">Fishing</p>
+				<h3><?php echo esc_html( $outlook['rating'] ); ?> fishing conditions</h3>
+			</header>
+			<p>Wind averages <?php echo esc_html( (string) ( $outlook['average_wind'] ?? 0 ) ); ?> mph, rain risk reaches <?php echo esc_html( (string) ( $outlook['rain_max'] ?? 0 ) ); ?>%, and the moon is <?php echo esc_html( strtolower( (string) ( $outlook['moon_phase'] ?? '' ) ) ); ?>.</p>
+			<?php echo $this->detail_link( $detail_url, 'View fishing forecast' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+		</section>
+		<?php
+		return ob_get_clean();
+	}
+
+	private function render_fishing_detail( array $outlook ): string {
 		ob_start();
 		?>
 		<section class="lkc-panel lkc-fishing">
@@ -137,7 +227,7 @@ class LKC_Plugin {
 				<li><strong>Moon:</strong> <?php echo esc_html( (string) ( $outlook['moon_phase'] ?? '' ) ); ?></li>
 			</ul>
 			<?php if ( ! empty( $outlook['notes'] ) ) : ?>
-				<ul>
+				<ul class="lkc-note-list">
 					<?php foreach ( $outlook['notes'] as $note ) : ?>
 						<li><?php echo esc_html( $note ); ?></li>
 					<?php endforeach; ?>
@@ -151,20 +241,48 @@ class LKC_Plugin {
 	public function styles(): void {
 		?>
 		<style>
+			.lake-home-conditions-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+				gap: 1rem;
+				margin-top: 1.25rem;
+			}
+			.lake-home-conditions-grid .lkc-panel {
+				margin: 0;
+			}
 			.lkc-panel {
 				border: 1px solid #d8e1dc;
 				background: #f7faf8;
 				color: #173f42;
 				padding: clamp(1.25rem, 4vw, 2rem);
-				margin: 2rem 0;
+				margin: 1.5rem 0;
+				box-sizing: border-box;
 			}
 			.lkc-panel h2,
 			.lkc-panel h3,
-			.lkc-panel p {
+			.lkc-panel p,
+			.lkc-panel li,
+			.lkc-panel dt,
+			.lkc-panel dd {
 				color: inherit;
+			}
+			.lkc-panel h2 {
+				margin: 0 0 .45rem;
+				font-size: clamp(1.55rem, 3vw, 2.25rem);
+				line-height: 1.15;
+			}
+			.lkc-panel h3 {
+				margin: 0;
+				font-size: clamp(1.08rem, 2vw, 1.35rem);
+				line-height: 1.2;
 			}
 			.lkc-panel-header {
 				margin-bottom: 1rem;
+			}
+			.lkc-panel-summary {
+				min-height: 100%;
+				display: flex;
+				flex-direction: column;
 			}
 			.lkc-eyebrow {
 				margin: 0 0 .35rem;
@@ -173,24 +291,106 @@ class LKC_Plugin {
 				letter-spacing: .08em;
 				text-transform: uppercase;
 			}
+			.lkc-featured-window {
+				display: flex;
+				justify-content: space-between;
+				align-items: flex-start;
+				gap: 1rem;
+				padding: 1rem;
+				margin: 1rem 0;
+				border: 1px solid #d8e1dc;
+				background: #ffffff;
+			}
+			.lkc-featured-window p:last-child {
+				margin-bottom: 0;
+			}
 			.lkc-window-list {
 				display: grid;
 				grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 				gap: 1rem;
+				margin-top: 1rem;
 			}
 			.lkc-window-card {
 				background: #fff;
 				border: 1px solid #d8e1dc;
 				padding: 1rem;
 			}
-			.lkc-window-card h3 {
-				margin-top: 0;
+			.lkc-card-title-row {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: .75rem;
 			}
 			.lkc-window-time {
 				font-weight: 800;
+				margin: .55rem 0;
+			}
+			.lkc-window-note {
+				margin: .75rem 0 0;
+				font-size: .95rem;
+			}
+			.lkc-metric-grid {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: .55rem;
+				margin: .75rem 0 0;
+			}
+			.lkc-metric-grid div {
+				padding: .65rem;
+				background: #f7faf8;
+				border: 1px solid #e2ebe6;
+			}
+			.lkc-metric-grid dt {
+				margin: 0 0 .2rem;
+				font-size: .75rem;
+				font-weight: 800;
+				text-transform: uppercase;
+			}
+			.lkc-metric-grid dd {
+				margin: 0;
+				font-weight: 800;
+			}
+			.lkc-rating-pill {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				min-height: 30px;
+				padding: .25rem .6rem;
+				border-radius: 999px;
+				background: #e7f2ee;
+				color: #164c50;
+				font-size: .82rem;
+				font-weight: 800;
+				white-space: nowrap;
+			}
+			.lkc-rating-excellent {
+				background: #dff1e6;
+				color: #1c6535;
+			}
+			.lkc-rating-good {
+				background: #e5f3f3;
+				color: #155e63;
+			}
+			.lkc-rating-fair {
+				background: #fff1d6;
+				color: #7a4a00;
+			}
+			.lkc-rating-poor,
+			.lkc-rating-unavailable {
+				background: #f7e3df;
+				color: #8a2d1b;
+			}
+			.lkc-hour-detail {
+				margin-top: 1.5rem;
+			}
+			.lkc-table-scroll {
+				overflow-x: auto;
+				border: 1px solid #d8e1dc;
+				background: #ffffff;
 			}
 			.lkc-hour-table {
 				width: 100%;
+				min-width: 680px;
 				border-collapse: collapse;
 				font-size: .9rem;
 			}
@@ -200,14 +400,108 @@ class LKC_Plugin {
 				padding: .45rem;
 				text-align: left;
 			}
+			.lkc-hour-table th {
+				background: #edf4f1;
+				font-weight: 800;
+			}
 			.lkc-stat-list {
 				display: grid;
 				grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 				gap: .5rem 1rem;
 				padding-left: 1rem;
 			}
+			.lkc-note-list {
+				margin-top: 1rem;
+			}
+			.lkc-actions {
+				margin: auto 0 0;
+				padding-top: 1rem;
+			}
+			.lkc-button {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				min-height: 42px;
+				padding: .7rem 1rem;
+				background: #155e63;
+				color: #ffffff !important;
+				font-weight: 800;
+				text-decoration: none;
+			}
+			.lkc-button:hover {
+				background: #0e4b4f;
+				color: #ffffff !important;
+			}
+			@media (max-width: 640px) {
+				.lkc-featured-window,
+				.lkc-card-title-row {
+					display: grid;
+				}
+				.lkc-metric-grid {
+					grid-template-columns: 1fr;
+				}
+				.lkc-button {
+					width: 100%;
+				}
+			}
 		</style>
 		<?php
+	}
+
+	private function detail_link( string $url, string $label ): string {
+		$url = trim( $url );
+		if ( '' === $url ) {
+			return '';
+		}
+
+		return '<p class="lkc-actions"><a class="lkc-button" href="' . esc_url( $url ) . '">' . esc_html( $label ) . '</a></p>';
+	}
+
+	private function format_window_range( array $window ): string {
+		$start = strtotime( (string) ( $window['start'] ?? '' ) );
+		$end   = $this->window_end_timestamp( $window );
+
+		if ( ! $start || ! $end ) {
+			return (string) ( $window['start'] ?? '' ) . ' - ' . (string) ( $window['end'] ?? '' );
+		}
+
+		$end_format = date_i18n( 'Y-m-d', $start ) === date_i18n( 'Y-m-d', $end ) ? 'g:i a' : 'D, M j g:i a';
+
+		return date_i18n( 'D, M j g:i a', $start ) . ' - ' . date_i18n( $end_format, $end );
+	}
+
+	private function format_compact_window_range( array $window ): string {
+		$start = strtotime( (string) ( $window['start'] ?? '' ) );
+		$end   = $this->window_end_timestamp( $window );
+
+		if ( ! $start || ! $end ) {
+			return (string) ( $window['start'] ?? '' ) . ' - ' . (string) ( $window['end'] ?? '' );
+		}
+
+		return date_i18n( 'g:i a', $start ) . ' - ' . date_i18n( 'g:i a', $end );
+	}
+
+	private function format_day( string $time ): string {
+		$timestamp = strtotime( $time );
+		return $timestamp ? date_i18n( 'D, M j', $timestamp ) : $time;
+	}
+
+	private function window_summary_sentence( array $window ): string {
+		return sprintf(
+			'Average temp %s F, max wind %s mph, rain chance up to %s%%.',
+			(string) ( $window['temp_avg'] ?? 0 ),
+			(string) ( $window['wind_max'] ?? 0 ),
+			(string) ( $window['rain_max'] ?? 0 )
+		);
+	}
+
+	private function rating_class( string $rating ): string {
+		return 'lkc-rating-pill ' . sanitize_html_class( 'lkc-rating-' . strtolower( $rating ) );
+	}
+
+	private function window_end_timestamp( array $window ): int {
+		$end = strtotime( (string) ( $window['end'] ?? '' ) );
+		return $end ? $end + HOUR_IN_SECONDS : 0;
 	}
 
 	private function error_message( WP_Error $error ): string {

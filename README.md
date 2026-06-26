@@ -12,6 +12,13 @@ WordPress plugin for Lake Kosh boating and fishing recommendations.
 - Provides shortcodes:
   - `[lake_kosh_boating_conditions]`
   - `[lake_kosh_fishing_conditions]`
+  - `[lake_kosh_boating_conditions view="summary" detail_url="/boating-conditions/"]`
+  - `[lake_kosh_fishing_conditions view="summary" detail_url="/fishing-conditions/"]`
+
+## Display Notes
+
+- Full boating output shows one featured window, a non-overlapping window list, and one hourly detail table.
+- Summary mode is intended for homepage cards that link to fuller boating and fishing pages.
 
 ## Update Checker
 
