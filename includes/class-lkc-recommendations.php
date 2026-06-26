@@ -216,7 +216,7 @@ class LKC_Recommendations {
 
 		foreach ( $candidates as $candidate ) {
 			$day = substr( (string) $candidate['start'], 0, 10 );
-			if ( ( $per_day[ $day ] ?? 0 ) >= 2 ) {
+			if ( ( $per_day[ $day ] ?? 0 ) >= 1 ) {
 				continue;
 			}
 

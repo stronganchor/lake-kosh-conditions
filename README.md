@@ -17,7 +17,7 @@ WordPress plugin for Lake Kosh boating and fishing recommendations.
 
 ## Display Notes
 
-- Full boating output shows one featured window, a non-overlapping window list, and one hourly detail table.
+- Full boating output shows one featured window, one recommended window per day, and one hourly detail table.
 - Summary mode is intended for homepage cards that link to fuller boating and fishing pages.
 
 ## Update Checker
