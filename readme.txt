@@ -3,7 +3,7 @@ Contributors: stronganchor
 Tags: weather, boating, fishing, lake
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 0.2.1
+Stable tag: 0.2.2
 License: GPLv2 or later
 
 Weather-backed boating and fishing condition recommendations for Lake Koshkonong.
@@ -20,6 +20,11 @@ Shortcodes:
 * `[lake_kosh_fishing_conditions view="summary" detail_url="/fishing-conditions/"]`
 
 == Changelog ==
+
+= 0.2.2 =
+* Rounded displayed temperatures and wind speeds to whole numbers.
+* Added wind direction to displayed wind speeds.
+* Moved boating and fishing hourly detail into each forecast card.
 
 = 0.2.1 =
 * Added a boating forecast safety note and rounded fishing solunar windows to the nearest half hour.

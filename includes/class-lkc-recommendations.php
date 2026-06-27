@@ -114,6 +114,7 @@ class LKC_Recommendations {
 			'rating'        => $this->rating_from_score( $score ),
 			'score'         => $score,
 			'average_wind'  => round( $avg_wind, 1 ),
+			'average_wind_direction' => $this->average_wind_direction( $next ),
 			'rain_max'      => $rain_max,
 			'pressure_drop' => round( $pressure_drop, 1 ),
 			'moon_phase'    => $moon,
@@ -295,6 +296,7 @@ class LKC_Recommendations {
 			'rating'            => $this->rating_from_score( $score ),
 			'score'             => $score,
 			'wind_avg'          => round( $wind_avg, 1 ),
+			'wind_direction'    => $this->average_wind_direction( $period_hours ),
 			'rain_max'          => $rain_max,
 			'hours'             => $period_hours,
 			'notes'             => $notes,
@@ -409,6 +411,7 @@ class LKC_Recommendations {
 			'rating'     => $this->rating_from_score( $score ),
 			'score'      => $score,
 			'wind_max'   => round( $wind_max, 1 ),
+			'wind_direction' => $this->direction_for_max_wind( $window ),
 			'gust_max'   => round( $gust_max, 1 ),
 			'temp_avg'   => round( $temp_avg, 1 ),
 			'rain_max'   => $rain_max,
@@ -738,5 +741,47 @@ class LKC_Recommendations {
 
 	private function date_part( string $datetime ): string {
 		return substr( $datetime, 0, 10 );
+	}
+
+	private function average_wind_direction( array $hours ): ?int {
+		$x = 0.0;
+		$y = 0.0;
+
+		foreach ( $hours as $hour ) {
+			if ( ! isset( $hour['wind_direction'] ) || ! is_numeric( $hour['wind_direction'] ) ) {
+				continue;
+			}
+
+			$weight  = max( 1.0, (float) ( $hour['wind_speed'] ?? 1 ) );
+			$radians = deg2rad( (float) $hour['wind_direction'] );
+			$x      += sin( $radians ) * $weight;
+			$y      += cos( $radians ) * $weight;
+		}
+
+		if ( 0.0 === $x && 0.0 === $y ) {
+			return null;
+		}
+
+		$degrees = (int) round( rad2deg( atan2( $x, $y ) ) );
+		if ( $degrees < 0 ) {
+			$degrees += 360;
+		}
+
+		return $degrees;
+	}
+
+	private function direction_for_max_wind( array $hours ): ?int {
+		$best_speed     = null;
+		$best_direction = null;
+
+		foreach ( $hours as $hour ) {
+			$speed = (float) ( $hour['wind_speed'] ?? 0 );
+			if ( null === $best_speed || $speed > $best_speed ) {
+				$best_speed     = $speed;
+				$best_direction = isset( $hour['wind_direction'] ) && is_numeric( $hour['wind_direction'] ) ? (int) $hour['wind_direction'] : null;
+			}
+		}
+
+		return $best_direction;
 	}
 }

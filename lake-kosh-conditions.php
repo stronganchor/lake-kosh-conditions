@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Lake Kosh Conditions
  * Description: Weather-backed boating and fishing condition recommendations for Lake Koshkonong.
- * Version: 0.2.1
+ * Version: 0.2.2
  * Update URI: https://github.com/stronganchor/lake-kosh-conditions
  * Author: Strong Anchor Tech
  * Requires at least: 6.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LKC_VERSION', '0.2.1' );
+define( 'LKC_VERSION', '0.2.2' );
 define( 'LKC_PLUGIN_FILE', __FILE__ );
 define( 'LKC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LKC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

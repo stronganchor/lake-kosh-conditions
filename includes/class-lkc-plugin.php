@@ -166,37 +166,16 @@ class LKC_Plugin {
 							</div>
 							<p class="lkc-window-time"><?php echo esc_html( $this->format_compact_window_range( $window ) ); ?></p>
 							<dl class="lkc-metric-grid">
-								<div><dt>Temp</dt><dd><?php echo esc_html( (string) $window['temp_avg'] ); ?>&deg;F</dd></div>
-								<div><dt>Wind</dt><dd><?php echo esc_html( (string) $window['wind_max'] ); ?> mph</dd></div>
+								<div><dt>Temp</dt><dd><?php echo esc_html( $this->format_temperature( $window['temp_avg'] ) ); ?></dd></div>
+								<div><dt>Wind</dt><dd><?php echo esc_html( $this->format_wind( $window['wind_max'], $window['wind_direction'] ?? null ) ); ?></dd></div>
 								<div><dt>Rain</dt><dd><?php echo esc_html( (string) $window['rain_max'] ); ?>%</dd></div>
 							</dl>
 							<?php if ( ! empty( $window['notes'] ) ) : ?>
 								<p class="lkc-window-note"><?php echo esc_html( implode( ' ', $window['notes'] ) ); ?></p>
 							<?php endif; ?>
+							<?php $this->render_boating_window_detail( $window ); ?>
 						</article>
 					<?php endforeach; ?>
-				</div>
-
-				<div class="lkc-hour-detail">
-					<h3>Hourly Detail</h3>
-					<div class="lkc-table-scroll">
-						<table class="lkc-hour-table">
-							<thead><tr><th>Window</th><th>Hour</th><th>Temp</th><th>Wind</th><th>Rain</th></tr></thead>
-							<tbody>
-								<?php foreach ( $windows as $window ) : ?>
-									<?php foreach ( $window['hours'] as $hour ) : ?>
-										<tr>
-											<td><?php echo esc_html( $this->format_day( $window['start'] ) . ' ' . $this->format_compact_window_range( $window ) ); ?></td>
-											<td><?php echo esc_html( $this->format_hour( $hour['time'] ) ); ?></td>
-											<td><?php echo esc_html( (string) round( $hour['temperature'] ) ); ?>&deg;</td>
-											<td><?php echo esc_html( $this->wind_label( $hour ) ); ?></td>
-											<td><?php echo esc_html( (string) $hour['precip_probability'] ); ?>%</td>
-										</tr>
-									<?php endforeach; ?>
-								<?php endforeach; ?>
-							</tbody>
-						</table>
-					</div>
 				</div>
 			<?php endif; ?>
 		</section>
@@ -215,7 +194,7 @@ class LKC_Plugin {
 				<h3><?php echo empty( $windows ) ? esc_html( $outlook['rating'] . ' fishing conditions' ) : esc_html( $windows[0]['rating'] . ' fishing window' ); ?></h3>
 			</header>
 			<?php if ( empty( $windows ) ) : ?>
-				<p>Wind averages <?php echo esc_html( (string) ( $outlook['average_wind'] ?? 0 ) ); ?> mph, rain risk reaches <?php echo esc_html( (string) ( $outlook['rain_max'] ?? 0 ) ); ?>%, and the moon is <?php echo esc_html( strtolower( (string) ( $outlook['moon_phase'] ?? '' ) ) ); ?>.</p>
+				<p>Wind averages <?php echo esc_html( $this->format_wind( $outlook['average_wind'] ?? 0, $outlook['average_wind_direction'] ?? null ) ); ?>, rain risk reaches <?php echo esc_html( (string) ( $outlook['rain_max'] ?? 0 ) ); ?>%, and the moon is <?php echo esc_html( strtolower( (string) ( $outlook['moon_phase'] ?? '' ) ) ); ?>.</p>
 			<?php else : ?>
 				<p class="lkc-window-time"><?php echo esc_html( $this->format_window_range( $windows[0] ) ); ?></p>
 				<p><?php echo esc_html( $this->fishing_summary_sentence( $windows[0] ) ); ?></p>
@@ -256,39 +235,20 @@ class LKC_Plugin {
 							<p class="lkc-window-time"><?php echo esc_html( $this->format_compact_window_range( $window ) ); ?></p>
 							<p class="lkc-window-note"><?php echo esc_html( $window['period_type'] . ' solunar period: ' . $window['event_label'] ); ?></p>
 							<dl class="lkc-metric-grid">
-								<div><dt>Wind</dt><dd><?php echo esc_html( (string) $window['wind_avg'] ); ?> mph</dd></div>
+								<div><dt>Wind</dt><dd><?php echo esc_html( $this->format_wind( $window['wind_avg'], $window['wind_direction'] ?? null ) ); ?></dd></div>
 								<div><dt>Rain</dt><dd><?php echo esc_html( (string) $window['rain_max'] ); ?>%</dd></div>
 								<div><dt>Moon</dt><dd><?php echo esc_html( (string) ( $window['moon_illumination'] ?: $window['moon_phase'] ) ); ?></dd></div>
 							</dl>
 							<?php if ( ! empty( $window['notes'] ) ) : ?>
 								<p class="lkc-window-note"><?php echo esc_html( implode( ' ', $window['notes'] ) ); ?></p>
 							<?php endif; ?>
+							<?php $this->render_fishing_window_detail( $window ); ?>
 						</article>
 					<?php endforeach; ?>
 				</div>
-				<div class="lkc-hour-detail">
-					<h3>Solunar Table</h3>
-					<div class="lkc-table-scroll">
-						<table class="lkc-hour-table">
-							<thead><tr><th>Window</th><th>Solunar</th><th>Rating</th><th>Wind</th><th>Rain</th><th>Moon</th></tr></thead>
-							<tbody>
-								<?php foreach ( $windows as $window ) : ?>
-									<tr>
-										<td><?php echo esc_html( $this->format_day( $window['start'] ) . ' ' . $this->format_compact_window_range( $window ) ); ?></td>
-										<td><?php echo esc_html( $window['period_type'] . ': ' . $window['event_label'] ); ?></td>
-										<td><?php echo esc_html( $window['rating'] ); ?></td>
-										<td><?php echo esc_html( (string) $window['wind_avg'] ); ?> mph</td>
-										<td><?php echo esc_html( (string) $window['rain_max'] ); ?>%</td>
-										<td><?php echo esc_html( trim( (string) $window['moon_phase'] . ' ' . (string) $window['moon_illumination'] ) ); ?></td>
-									</tr>
-								<?php endforeach; ?>
-							</tbody>
-						</table>
-					</div>
-				</div>
 			<?php endif; ?>
 			<ul class="lkc-stat-list">
-				<li><strong>Average wind:</strong> <?php echo esc_html( (string) ( $outlook['average_wind'] ?? 0 ) ); ?> mph</li>
+				<li><strong>Average wind:</strong> <?php echo esc_html( $this->format_wind( $outlook['average_wind'] ?? 0, $outlook['average_wind_direction'] ?? null ) ); ?></li>
 				<li><strong>Rain risk:</strong> up to <?php echo esc_html( (string) ( $outlook['rain_max'] ?? 0 ) ); ?>%</li>
 				<li><strong>Pressure drop:</strong> <?php echo esc_html( (string) ( $outlook['pressure_drop'] ?? 0 ) ); ?> hPa</li>
 				<li><strong>Moon:</strong> <?php echo esc_html( trim( (string) ( $outlook['moon_phase'] ?? '' ) . ' ' . (string) ( $outlook['moon_illumination'] ?? '' ) ) ); ?></li>
@@ -303,6 +263,59 @@ class LKC_Plugin {
 		</section>
 		<?php
 		return ob_get_clean();
+	}
+
+	private function render_boating_window_detail( array $window ): void {
+		if ( empty( $window['hours'] ) || ! is_array( $window['hours'] ) ) {
+			return;
+		}
+		?>
+		<details class="lkc-window-detail">
+			<summary>Hourly detail</summary>
+			<div class="lkc-table-scroll">
+				<table class="lkc-hour-table">
+					<thead><tr><th>Hour</th><th>Temp</th><th>Wind</th><th>Rain</th></tr></thead>
+					<tbody>
+						<?php foreach ( $window['hours'] as $hour ) : ?>
+							<tr>
+								<td><?php echo esc_html( $this->format_hour( $hour['time'] ) ); ?></td>
+								<td><?php echo esc_html( $this->format_temperature( $hour['temperature'] ) ); ?></td>
+								<td><?php echo esc_html( $this->wind_label( $hour ) ); ?></td>
+								<td><?php echo esc_html( (string) $hour['precip_probability'] ); ?>%</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			</div>
+		</details>
+		<?php
+	}
+
+	private function render_fishing_window_detail( array $window ): void {
+		if ( empty( $window['hours'] ) || ! is_array( $window['hours'] ) ) {
+			return;
+		}
+		?>
+		<details class="lkc-window-detail">
+			<summary>Hourly detail</summary>
+			<div class="lkc-table-scroll">
+				<table class="lkc-hour-table">
+					<thead><tr><th>Hour</th><th>Temp</th><th>Wind</th><th>Rain</th><th>Pressure</th></tr></thead>
+					<tbody>
+						<?php foreach ( $window['hours'] as $hour ) : ?>
+							<tr>
+								<td><?php echo esc_html( $this->format_hour( $hour['time'] ) ); ?></td>
+								<td><?php echo esc_html( $this->format_temperature( $hour['temperature'] ) ); ?></td>
+								<td><?php echo esc_html( $this->wind_label( $hour ) ); ?></td>
+								<td><?php echo esc_html( (string) $hour['precip_probability'] ); ?>%</td>
+								<td><?php echo esc_html( (string) round( (float) $hour['pressure'] ) ); ?> hPa</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			</div>
+		</details>
+		<?php
 	}
 
 	public function styles(): void {
@@ -450,6 +463,17 @@ class LKC_Plugin {
 			.lkc-hour-detail {
 				margin-top: 1.5rem;
 			}
+			.lkc-window-detail {
+				margin-top: 1rem;
+			}
+			.lkc-window-detail summary {
+				cursor: pointer;
+				color: #155e63;
+				font-weight: 800;
+			}
+			.lkc-window-detail .lkc-table-scroll {
+				margin-top: .65rem;
+			}
 			.lkc-table-scroll {
 				overflow-x: auto;
 				border: 1px solid #d8e1dc;
@@ -457,7 +481,7 @@ class LKC_Plugin {
 			}
 			.lkc-hour-table {
 				width: 100%;
-				min-width: 680px;
+				min-width: 430px;
 				border-collapse: collapse;
 				font-size: .9rem;
 			}
@@ -566,18 +590,18 @@ class LKC_Plugin {
 
 	private function window_summary_sentence( array $window ): string {
 		return sprintf(
-			'Average temp %s F, max wind %s mph, rain chance up to %s%%.',
-			(string) ( $window['temp_avg'] ?? 0 ),
-			(string) ( $window['wind_max'] ?? 0 ),
+			'Average temp %s, max wind %s, rain chance up to %s%%.',
+			$this->format_temperature( $window['temp_avg'] ?? 0 ),
+			$this->format_wind( $window['wind_max'] ?? 0, $window['wind_direction'] ?? null ),
 			(string) ( $window['rain_max'] ?? 0 )
 		);
 	}
 
 	private function fishing_summary_sentence( array $window ): string {
 		return sprintf(
-			'%s solunar period, %s wind, rain chance up to %s%%.',
+			'%s solunar period, wind %s, rain chance up to %s%%.',
 			(string) ( $window['period_type'] ?? 'Solunar' ),
-			(string) ( $window['wind_avg'] ?? 0 ) . ' mph',
+			$this->format_wind( $window['wind_avg'] ?? 0, $window['wind_direction'] ?? null ),
 			(string) ( $window['rain_max'] ?? 0 )
 		);
 	}
@@ -614,7 +638,24 @@ class LKC_Plugin {
 	}
 
 	private function wind_label( array $hour ): string {
-		return round( (float) $hour['wind_speed'] ) . ' mph ' . $this->compass_direction( (int) $hour['wind_direction'] );
+		return $this->format_wind( $hour['wind_speed'] ?? 0, $hour['wind_direction'] ?? null );
+	}
+
+	private function format_temperature( $temperature ): string {
+		return $this->round_up_whole( $temperature ) . '°F';
+	}
+
+	private function format_wind( $speed, $direction = null ): string {
+		$label = $this->round_up_whole( $speed ) . ' mph';
+		if ( null !== $direction && '' !== $direction && is_numeric( $direction ) ) {
+			$label .= ' ' . $this->compass_direction( (int) $direction );
+		}
+
+		return $label;
+	}
+
+	private function round_up_whole( $value ): int {
+		return (int) ceil( (float) $value );
 	}
 
 	private function compass_direction( int $degrees ): string {
